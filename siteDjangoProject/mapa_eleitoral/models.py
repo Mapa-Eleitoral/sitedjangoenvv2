@@ -16,7 +16,7 @@ class DadoEleitoral(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
-        db_table = 'dados_eleitorais'  # Nome da tabela no MySQL
+        db_table = 'eleicao_16_rio'  # Nome da tabela no MySQL
         verbose_name = "Dado Eleitoral"
         verbose_name_plural = "Dados Eleitorais"
         indexes = [
