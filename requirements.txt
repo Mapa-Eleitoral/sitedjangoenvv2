@@ -10,7 +10,7 @@ python-decouple>=3.8.0
 # MySQL dependencies
 mysqlclient>=2.1.0
 # Alternativa se mysqlclient não funcionar:
-# PyMySQL>=1.0.0
+PyMySQL>=1.0.0
 
 # Para desenvolvimento local (opcional)
 python-dotenv>=1.0.0
