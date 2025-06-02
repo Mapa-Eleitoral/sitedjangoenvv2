@@ -8,8 +8,7 @@ gunicorn>=20.1.0
 python-decouple>=3.8.0
 
 # MySQL dependencies
-mysqlclient>=2.1.0
-# Alternativa se mysqlclient não funcionar:
+# mysqlclient>=2.1.0  # Comentado
 PyMySQL>=1.0.0
 
 # Para desenvolvimento local (opcional)
