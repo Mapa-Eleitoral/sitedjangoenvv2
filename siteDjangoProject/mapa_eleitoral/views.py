@@ -8,6 +8,8 @@ from django.conf import settings
 import folium as fl
 from django.utils.safestring import mark_safe
 from django.core.cache import cache
+import pandas as pd
+import numpy as np
 from .models import DadoEleitoral  # ou DadoEleitoralRaw
 
 def load_geojson():
@@ -92,32 +94,47 @@ def home_view(request):
                 prefer_canvas=True
             )
             
-            # Preparar dados para o Choropleth
-            dados_choropleth = []
-            for item in votos_por_bairro:
-                dados_choropleth.append([item['nm_bairro'], item['total_votos']])
-            
-            # Caminho do GeoJSON
-            geojson_path = os.path.join(settings.BASE_DIR, 'mapa_eleitoral', 'data', 'Limite_Bairro.geojson')
-            
-            # Adicionar Choropleth se há dados
-            if dados_choropleth:
-                import pandas as pd
+            # CORREÇÃO: Preparar dados para o Choropleth de forma mais segura
+            if votos_por_bairro:
+                # Criar DataFrame e garantir tipos corretos
+                dados_choropleth = []
+                for item in votos_por_bairro:
+                    bairro = str(item['nm_bairro']) if item['nm_bairro'] else 'N/A'
+                    votos = int(item['total_votos']) if item['total_votos'] is not None else 0
+                    dados_choropleth.append([bairro, votos])
+                
+                # Criar DataFrame com tipos explícitos
                 df_choropleth = pd.DataFrame(dados_choropleth, columns=['bairro', 'votos'])
                 
-                choropleth = fl.Choropleth(
-                    geo_data=geojson_path,
-                    data=df_choropleth,
-                    columns=["bairro", "votos"],
-                    key_on="feature.properties.NOME",
-                    fill_color='YlGn',
-                    nan_fill_color='white',
-                    line_opacity=0.7,
-                    fill_opacity=0.7,
-                    highlight=True,
-                    legend_name='Total de Votos'
-                )
-                choropleth.add_to(mapa)
+                # Garantir que a coluna votos é numérica
+                df_choropleth['votos'] = pd.to_numeric(df_choropleth['votos'], errors='coerce').fillna(0)
+                
+                # Debug - remova depois que funcionar
+                print("DataFrame choropleth:")
+                print(df_choropleth.head())
+                print("Tipos:", df_choropleth.dtypes)
+                print("Valores únicos votos:", df_choropleth['votos'].unique()[:10])
+                
+                # Caminho do GeoJSON
+                geojson_path = os.path.join(settings.BASE_DIR, 'mapa_eleitoral', 'data', 'Limite_Bairro.geojson')
+                
+                try:
+                    choropleth = fl.Choropleth(
+                        geo_data=geojson_path,
+                        data=df_choropleth,
+                        columns=["bairro", "votos"],
+                        key_on="feature.properties.NOME",
+                        fill_color='YlGn',
+                        nan_fill_color='white',
+                        line_opacity=0.7,
+                        fill_opacity=0.7,
+                        highlight=True,
+                        legend_name='Total de Votos'
+                    )
+                    choropleth.add_to(mapa)
+                except Exception as e:
+                    print(f"Erro no Choropleth: {e}")
+                    # Continuar sem o choropleth se der erro
             
             # Adicionar tooltips
             geojson_data = load_geojson()

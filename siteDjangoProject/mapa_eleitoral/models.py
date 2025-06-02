@@ -2,47 +2,34 @@
 from django.db import models
 
 class DadoEleitoral(models.Model):
-    # Campos baseados no que você tinha no parquet
-    sg_partido = models.CharField(max_length=20, verbose_name="Sigla do Partido")
-    nm_urna_candidato = models.CharField(max_length=200, verbose_name="Nome do Candidato")
-    ds_cargo = models.CharField(max_length=100, verbose_name="Cargo")
-    nm_bairro = models.CharField(max_length=200, verbose_name="Nome do Bairro")
-    qt_votos = models.IntegerField(default=0, verbose_name="Quantidade de Votos")
+    """
+    Model que mapeia para a tabela eleicao_16_rio existente no MySQL
+    """
+    # Campo ID adicionado (corresponde à coluna id criada no MySQL)
+    id = models.AutoField(primary_key=True)
     
-    # Campos adicionais que podem ser úteis
-    ano_eleicao = models.IntegerField(default=2016, verbose_name="Ano da Eleição")
-    nm_municipio = models.CharField(max_length=200, default="RIO DE JANEIRO", verbose_name="Município")
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    # Mapeando exatamente os campos da sua tabela MySQL
+    ano_eleicao = models.CharField(max_length=4, db_column='ANO_ELEICAO', verbose_name="Ano da Eleição")
+    sg_uf = models.CharField(max_length=2, db_column='SG_UF', verbose_name="Código UF")
+    nm_ue = models.CharField(max_length=64, db_column='NM_UE', verbose_name="Nome da Unidade Eleitoral")
+    ds_cargo = models.CharField(max_length=50, db_column='DS_CARGO', verbose_name="Descrição do Cargo")
+    nr_candidato = models.CharField(max_length=8, db_column='NR_CANDIDATO', verbose_name="Número do Candidato")
+    nm_candidato = models.CharField(max_length=64, db_column='NM_CANDIDATO', verbose_name="Nome do Candidato")
+    nm_urna_candidato = models.CharField(max_length=64, db_column='NM_URNA_CANDIDATO', verbose_name="Nome na Urna")
+    nr_cpf_candidato = models.CharField(max_length=11, db_column='NR_CPF_CANDIDATO', verbose_name="CPF do Candidato")
+    nr_partido = models.CharField(max_length=100, db_column='NR_PARTIDO', verbose_name="Número do Partido")
+    sg_partido = models.CharField(max_length=10, db_column='SG_PARTIDO', verbose_name="Sigla do Partido")
+    nr_turno = models.IntegerField(db_column='NR_TURNO', verbose_name="Número do Turno")
+    qt_votos = models.DecimalField(max_digits=10, decimal_places=0, db_column='QT_VOTOS', verbose_name="Quantidade de Votos")
+    nm_bairro = models.CharField(max_length=100, db_column='NM_BAIRRO', verbose_name="Nome do Bairro")
+    nr_latitude = models.CharField(max_length=100, db_column='NR_LATITUDE', verbose_name="Latitude")
+    nr_longitude = models.CharField(max_length=100, db_column='NR_LONGITUDE', verbose_name="Longitude")
     
     class Meta:
-        db_table = 'eleicao_16_rio'  # Nome da tabela no MySQL
+        db_table = 'eleicao_16_rio'  # Nome da sua tabela MySQL existente
+        managed = False  # Django não vai tentar criar/alterar esta tabela
         verbose_name = "Dado Eleitoral"
         verbose_name_plural = "Dados Eleitorais"
-        indexes = [
-            models.Index(fields=['sg_partido']),
-            models.Index(fields=['nm_urna_candidato']),
-            models.Index(fields=['nm_bairro']),
-            models.Index(fields=['sg_partido', 'nm_urna_candidato']),
-        ]
     
     def __str__(self):
         return f"{self.nm_urna_candidato} ({self.sg_partido}) - {self.nm_bairro}: {self.qt_votos} votos"
-
-# Model alternativo se você quiser usar uma view ou tabela existente
-class DadoEleitoralRaw(models.Model):
-    """
-    Use este model se você já tem uma tabela MySQL 
-    e quer mapear diretamente para ela
-    """
-    # Mapeie os campos exatamente como estão no seu MySQL
-    partido = models.CharField(max_length=20, db_column='SG_PARTIDO')
-    candidato = models.CharField(max_length=200, db_column='NM_URNA_CANDIDATO')
-    cargo = models.CharField(max_length=100, db_column='DS_CARGO')
-    bairro = models.CharField(max_length=200, db_column='NM_BAIRRO')
-    votos = models.IntegerField(db_column='QT_VOTOS')
-    
-    class Meta:
-        db_table = 'sua_tabela_mysql_existente'  # Nome da sua tabela real
-        managed = False  # Django não vai gerenciar esta tabela
-        verbose_name = "Dado Eleitoral Raw"
