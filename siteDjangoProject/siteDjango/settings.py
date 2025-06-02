@@ -74,7 +74,7 @@ else:
             'ENGINE': 'django.db.backends.mysql',
             'NAME': config('DB_NAME', default='mapa_eleitoral'),
             'USER': config('DB_USER', default='root'),
-            'PASSWORD': config('DB_PASSWORD', default=''),
+            'PASSWORD': config('DB_PASSWORD', default='Di@s866258'),
             'HOST': config('DB_HOST', default='localhost'),
             'PORT': config('DB_PORT', default='3306'),
             'OPTIONS': {
