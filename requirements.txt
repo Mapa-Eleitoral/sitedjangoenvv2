@@ -1,21 +1,16 @@
-# Remover temporariamente: pandas, numpy, pyarrow, fastparquet
-
 # requirements.txt
-# Este arquivo contém as dependências necessárias para o projeto Django.
 Django>=4.2.0
 pandas>=1.5.0
 folium>=0.14.0
-pyarrow>=10.0.0  # Para leitura de arquivos parquet
-##fastparquet>=0.8.0  # Alternativa para parquet
-##numpy>=1.21.0
-dj-database-url>=0.5.0  # Para configuração de banco de dados
-whitenoise>=5.0.0  # Para servir arquivos estáticos
-gunicorn>=20.1.0  # Servidor WSGI para produção
-python-decouple>=3.8.0  # Para variáveis de ambiente
-##psycopg2-binary>=2.9.7  # Driver PostgreSQL
+dj-database-url>=0.5.0
+whitenoise>=5.0.0
+gunicorn>=20.1.0
+python-decouple>=3.8.0
 
-# Para mapas e gráficos eleitorais (opcional)
-# plotly>=5.15.0
-# pandas>=2.0.0
-# geopandas>=0.13.0
-# requests>=2.31.0
+# MySQL dependencies
+mysqlclient>=2.1.0
+# Alternativa se mysqlclient não funcionar:
+# PyMySQL>=1.0.0
+
+# Para desenvolvimento local (opcional)
+python-dotenv>=1.0.0

@@ -1,44 +1,51 @@
+# mapa_eleitoral/views.py
 from django.shortcuts import render
 from django.http import JsonResponse
-import pandas as pd
+from django.db.models import Sum
 import json
 import os
 from django.conf import settings
 import folium as fl
-from folium.features import GeoJsonTooltip
-from functools import lru_cache
-import gc
 from django.utils.safestring import mark_safe
+from django.core.cache import cache
+from .models import DadoEleitoral  # ou DadoEleitoralRaw
 
-@lru_cache(maxsize=1)
-def load_data():
-    """Carregar dados do parquet"""
-    parquet_path = os.path.join(settings.BASE_DIR, 'mapa_eleitoral', 'data', 'eleicao_16_rio.parquet')
-    df = pd.read_parquet(parquet_path)
-    df['QT_VOTOS'] = pd.to_numeric(df['QT_VOTOS'], errors='coerce').fillna(0).astype(int)
-    return df
-
-@lru_cache(maxsize=1)
 def load_geojson():
-    """Carregar dados do GeoJSON"""
-    geojson_path = os.path.join(settings.BASE_DIR, 'mapa_eleitoral', 'data', 'Limite_Bairro.geojson')
-    with open(geojson_path, 'r', encoding='utf-8') as f:
-        return json.load(f)
+    """Carregar dados do GeoJSON (mantém como estava)"""
+    cache_key = 'geojson_data'
+    geojson_data = cache.get(cache_key)
+    
+    if geojson_data is None:
+        geojson_path = os.path.join(settings.BASE_DIR, 'mapa_eleitoral', 'data', 'Limite_Bairro.geojson')
+        with open(geojson_path, 'r', encoding='utf-8') as f:
+            geojson_data = json.load(f)
+        cache.set(cache_key, geojson_data, 3600)  # Cache por 1 hora
+    
+    return geojson_data
 
 def home_view(request):
-    """View principal do mapa eleitoral"""
-    df = load_data()
+    """View principal do mapa eleitoral usando MySQL"""
     
-    # Obter lista de partidos
-    partidos = sorted(df["SG_PARTIDO"].dropna().unique())
+    # Obter lista de partidos únicos do banco
+    partidos = list(
+        DadoEleitoral.objects
+        .values_list('sg_partido', flat=True)
+        .distinct()
+        .order_by('sg_partido')
+    )
     
-    # Partido e candidato selecionados (via GET parameters)
+    # Partido e candidato selecionados
     selected_partido = request.GET.get('partido', 'PRB')
     selected_candidato = request.GET.get('candidato', '')
     
-    # Filtrar por partido
-    sel_part = df[df["SG_PARTIDO"] == selected_partido]
-    candidatos = sorted(sel_part["NM_URNA_CANDIDATO"].dropna().unique()) if not sel_part.empty else []
+    # Obter candidatos do partido selecionado
+    candidatos = list(
+        DadoEleitoral.objects
+        .filter(sg_partido=selected_partido)
+        .values_list('nm_urna_candidato', flat=True)
+        .distinct()
+        .order_by('nm_urna_candidato')
+    )
     
     # Se não há candidato selecionado, usar o primeiro ou o padrão
     if not selected_candidato or selected_candidato not in candidatos:
@@ -49,55 +56,75 @@ def home_view(request):
     candidato_info = {}
     
     if selected_candidato:
-        # Filtrar dados do candidato
-        cand_data = sel_part[sel_part["NM_URNA_CANDIDATO"] == selected_candidato]
+        # Buscar dados do candidato no MySQL
+        dados_candidato = DadoEleitoral.objects.filter(
+            sg_partido=selected_partido,
+            nm_urna_candidato=selected_candidato
+        )
         
-        if not cand_data.empty:
+        if dados_candidato.exists():
             # Calcular votos por bairro
-            votos_por_bairro = cand_data.groupby('NM_BAIRRO')['QT_VOTOS'].sum().reset_index()
-            votos_dict = dict(zip(votos_por_bairro['NM_BAIRRO'], votos_por_bairro['QT_VOTOS']))
+            votos_por_bairro = (
+                dados_candidato
+                .values('nm_bairro')
+                .annotate(total_votos=Sum('qt_votos'))
+                .order_by('nm_bairro')
+            )
+            
+            # Converter para dicionário para facilitar o uso
+            votos_dict = {item['nm_bairro']: item['total_votos'] for item in votos_por_bairro}
             
             # Informações do candidato
-            cand_stats = cand_data.iloc[0]
+            primeiro_registro = dados_candidato.first()
+            total_votos = dados_candidato.aggregate(Sum('qt_votos'))['qt_votos__sum'] or 0
+            
             candidato_info = {
-                'nome': cand_stats['NM_URNA_CANDIDATO'],
-                'cargo': cand_stats['DS_CARGO'],
-                'votos_total': cand_data['QT_VOTOS'].sum()
+                'nome': primeiro_registro.nm_urna_candidato,
+                'cargo': primeiro_registro.ds_cargo,
+                'votos_total': total_votos
             }
             
-            # Criar mapa com configurações específicas para Django
+            # Criar mapa
             mapa = fl.Map(
                 location=[-22.928777, -43.423878], 
                 zoom_start=10, 
                 tiles='CartoDB positron',
-                # Adicionar configurações para evitar problemas de segurança
                 prefer_canvas=True
             )
+            
+            # Preparar dados para o Choropleth
+            dados_choropleth = []
+            for item in votos_por_bairro:
+                dados_choropleth.append([item['nm_bairro'], item['total_votos']])
             
             # Caminho do GeoJSON
             geojson_path = os.path.join(settings.BASE_DIR, 'mapa_eleitoral', 'data', 'Limite_Bairro.geojson')
             
-            # Adicionar Choropleth
-            choropleth = fl.Choropleth(
-                geo_data=geojson_path,
-                data=cand_data,
-                columns=["NM_BAIRRO", "QT_VOTOS"],
-                key_on="feature.properties.NOME",
-                fill_color='YlGn',
-                nan_fill_color='white',
-                line_opacity=0.7,
-                fill_opacity=0.7,
-                highlight=True,
-                legend_name='Total de Votos'
-            )
-            choropleth.add_to(mapa)
+            # Adicionar Choropleth se há dados
+            if dados_choropleth:
+                import pandas as pd
+                df_choropleth = pd.DataFrame(dados_choropleth, columns=['bairro', 'votos'])
+                
+                choropleth = fl.Choropleth(
+                    geo_data=geojson_path,
+                    data=df_choropleth,
+                    columns=["bairro", "votos"],
+                    key_on="feature.properties.NOME",
+                    fill_color='YlGn',
+                    nan_fill_color='white',
+                    line_opacity=0.7,
+                    fill_opacity=0.7,
+                    highlight=True,
+                    legend_name='Total de Votos'
+                )
+                choropleth.add_to(mapa)
             
-            # Carregar GeoJSON e adicionar tooltips
+            # Adicionar tooltips
             geojson_data = load_geojson()
             for feature in geojson_data['features']:
                 bairro_nome = feature['properties']['NOME']
                 votos = votos_dict.get(bairro_nome, 0)
-                feature['properties']['tooltip_content'] = f"Bairro: {bairro_nome}<br>Votos: {votos}"
+                feature['properties']['tooltip_content'] = f"Bairro: {bairro_nome}<br>Votos: {votos:,}"
             
             # Adicionar GeoJson com tooltip
             fl.GeoJson(
@@ -118,7 +145,7 @@ def home_view(request):
                 )
             ).add_to(mapa)
             
-            # Converter mapa para HTML e marcar como seguro
+            # Converter mapa para HTML
             map_html = mark_safe(mapa._repr_html_())
     
     context = {
@@ -130,7 +157,6 @@ def home_view(request):
         'map_html': map_html,
     }
     
-    gc.collect()
     return render(request, 'home.html', context)
 
 def get_candidatos_ajax(request):
@@ -139,9 +165,12 @@ def get_candidatos_ajax(request):
     if not partido:
         return JsonResponse({'candidatos': []})
     
-    df = load_data()
-    sel_part = df[df["SG_PARTIDO"] == partido]
-    candidatos = sorted(sel_part["NM_URNA_CANDIDATO"].dropna().unique())
+    candidatos = list(
+        DadoEleitoral.objects
+        .filter(sg_partido=partido)
+        .values_list('nm_urna_candidato', flat=True)
+        .distinct()
+        .order_by('nm_urna_candidato')
+    )
     
-    gc.collect()
     return JsonResponse({'candidatos': candidatos})
