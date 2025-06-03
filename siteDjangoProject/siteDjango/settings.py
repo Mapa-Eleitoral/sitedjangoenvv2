@@ -75,8 +75,8 @@ else:
             'NAME': os.environ.get('railway'),
             'USER': os.environ.get('root'),
             'PASSWORD': os.environ.get('vdUTjvDUnrsBVQhuTCunHSZDYDZlkYwl'),
-            'HOST': os.environ.get('mysql.railway.internal'),
-            'PORT': os.environ.get('3306'),
+            'HOST': os.environ.get('yamanote.proxy.rlwy.net'),
+            'PORT': os.environ.get('34581'),
             'OPTIONS': {
                 'charset': 'utf8mb4',
                 'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
