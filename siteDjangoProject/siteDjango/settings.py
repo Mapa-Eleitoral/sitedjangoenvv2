@@ -71,15 +71,15 @@ else:
     # Para desenvolvimento local
     DATABASES = {
         'default': {
-            'ENGINE': 'django.db.backends.mysql',
-            'NAME': os.environ.get('DB_NAME', default='mapa_eleitoral'),
-            'USER': os.environ.get('DB_USER', default='root'),
-            'PASSWORD': os.environ.get('DB_PASSWORD', default=''),
-            'HOST': os.environ.get('DB_HOST', default='localhost'),
-            'PORT': os.environ.get('DB_PORT', default='3306'),
-            'OPTIONS': {
-                'charset': 'utf8mb4',
-                'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': config('DB_NAME', default='mapa_eleitoral'),
+        'USER': config('DB_USER', default='root'),
+        'PASSWORD': config('DB_PASSWORD', default=''),
+        'HOST': config('DB_HOST', default='localhost'),
+        'PORT': config('DB_PORT', default='3306'),
+        'OPTIONS': {
+            'charset': 'utf8mb4',
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
             },
         }
     }
