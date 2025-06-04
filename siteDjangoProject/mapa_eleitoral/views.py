@@ -136,7 +136,7 @@ def home_view(request):
                     highlight=True,
                     smooth_factor=0,
                     bins=10,
-                    format_numbers=lambda x: f'{int(float(x)):,d}'.replace(',', '.'),  # Formato inteiro com ponto como separador
+                    format_numbers=lambda x: f'{int(float(x)):,d}'.replace(',', '.'),
                     legend_position='bottomright'
                 ).add_to(mapa)
                 
