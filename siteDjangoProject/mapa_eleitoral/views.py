@@ -1,16 +1,16 @@
 # mapa_eleitoral/views.py
 from django.shortcuts import render
 from django.http import JsonResponse
-from django.db.models import Sum
+from django.db.models import Sum, F
 import json
 import os
 from django.conf import settings
 import folium as fl
 from django.utils.safestring import mark_safe
 from django.core.cache import cache
-import pandas as pd
-import numpy as np
+from decimal import Decimal
 from .models import DadoEleitoral  # ou DadoEleitoralRaw
+import branca.colormap as cm
 
 def load_geojson():
     """Carregar dados do GeoJSON (mantém como estava)"""
@@ -58,28 +58,45 @@ def home_view(request):
     candidato_info = {}
     
     if selected_candidato:
-        # Buscar dados do candidato no MySQL
-        dados_candidato = DadoEleitoral.objects.filter(
-            sg_partido=selected_partido,
-            nm_urna_candidato=selected_candidato
+        # Buscar e somar votos por bairro para o candidato selecionado
+        votos_por_bairro = (
+            DadoEleitoral.objects
+            .filter(
+                sg_partido=selected_partido,
+                nm_urna_candidato=selected_candidato
+            )
+            .values('nm_bairro')
+            .annotate(
+                total_votos=Sum('qt_votos')
+            )
+            .order_by('nm_bairro')
         )
         
-        if dados_candidato.exists():
-            # Calcular votos por bairro
-            votos_por_bairro = (
-                dados_candidato
-                .values('nm_bairro')
-                .annotate(total_votos=Sum('qt_votos'))
-                .order_by('nm_bairro')
+        # Debug para verificar os dados
+        print("Dados por bairro:")
+        for vpb in votos_por_bairro:
+            print(f"Bairro: {vpb['nm_bairro']}, Votos: {vpb['total_votos']}")
+        
+        # Converter para dicionário e garantir que são inteiros
+        votos_dict = {
+            item['nm_bairro']: int(item['total_votos']) if isinstance(item['total_votos'], (Decimal, int, float)) else 0 
+            for item in votos_por_bairro
+        }
+        
+        # Calcular total geral de votos do candidato
+        total_votos = sum(votos_dict.values())
+        
+        # Informações do candidato
+        primeiro_registro = (
+            DadoEleitoral.objects
+            .filter(
+                sg_partido=selected_partido,
+                nm_urna_candidato=selected_candidato
             )
-            
-            # Converter para dicionário para facilitar o uso
-            votos_dict = {item['nm_bairro']: item['total_votos'] for item in votos_por_bairro}
-            
-            # Informações do candidato
-            primeiro_registro = dados_candidato.first()
-            total_votos = dados_candidato.aggregate(Sum('qt_votos'))['qt_votos__sum'] or 0
-            
+            .first()
+        )
+        
+        if primeiro_registro:
             candidato_info = {
                 'nome': primeiro_registro.nm_urna_candidato,
                 'cargo': primeiro_registro.ds_cargo,
@@ -94,71 +111,98 @@ def home_view(request):
                 prefer_canvas=True
             )
             
-            # CORREÇÃO: Preparar dados para o Choropleth de forma mais segura
-            if votos_por_bairro:
-                # Criar DataFrame e garantir tipos corretos
-                dados_choropleth = []
-                for item in votos_por_bairro:
-                    bairro = str(item['nm_bairro']) if item['nm_bairro'] else 'N/A'
-                    votos = int(item['total_votos']) if item['total_votos'] is not None else 0
-                    dados_choropleth.append([bairro, votos])
-                
-                # Criar DataFrame com tipos explícitos
-                df_choropleth = pd.DataFrame(dados_choropleth, columns=['bairro', 'votos'])
-                
-                # Garantir que a coluna votos é numérica
-                df_choropleth['votos'] = pd.to_numeric(df_choropleth['votos'], errors='coerce').fillna(0)
-                
-                # Debug - remova depois que funcionar
-                print("DataFrame choropleth:")
-                print(df_choropleth.head())
-                print("Tipos:", df_choropleth.dtypes)
-                print("Valores únicos votos:", df_choropleth['votos'].unique()[:10])
-                
-                # Caminho do GeoJSON
-                geojson_path = os.path.join(settings.BASE_DIR, 'mapa_eleitoral', 'data', 'Limite_Bairro.geojson')
-                
-                try:
-                    choropleth = fl.Choropleth(
-                        geo_data=geojson_path,
-                        data=df_choropleth,
-                        columns=["bairro", "votos"],
-                        key_on="feature.properties.NOME",
-                        fill_color='YlGn',
-                        nan_fill_color='white',
-                        line_opacity=0.7,
-                        fill_opacity=0.7,
-                        highlight=True,
-                        legend_name='Total de Votos'
-                    )
-                    choropleth.add_to(mapa)
-                except Exception as e:
-                    print(f"Erro no Choropleth: {e}")
-                    # Continuar sem o choropleth se der erro
+            # Preparar dados para o Choropleth
+            dados_list = [
+                [bairro, votos] 
+                for bairro, votos in votos_dict.items()
+            ]
             
-            # Adicionar tooltips
+            # Caminho do GeoJSON
+            geojson_path = os.path.join(settings.BASE_DIR, 'mapa_eleitoral', 'data', 'Limite_Bairro.geojson')
+            
+            try:
+                # Criar choropleth usando lista de listas
+                choropleth = fl.Choropleth(
+                    geo_data=geojson_path,
+                    name='choropleth',
+                    data=dados_list,
+                    columns=['Bairro', 'Votos'],
+                    key_on='feature.properties.NOME',
+                    fill_color='YlGn',
+                    nan_fill_color='#ff7575',
+                    fill_opacity=0.7,
+                    line_opacity=0.2,
+                    legend_name='Total de Votos',
+                    highlight=True,
+                    smooth_factor=0,
+                    bins=10,
+                    format_numbers=lambda x: f'{int(float(x)):,d}'.replace(',', '.'),  # Formato inteiro com ponto como separador
+                    legend_position='bottomright'
+                ).add_to(mapa)
+                
+                # Personalizar a legenda com 10 tons de verde
+                for key in choropleth._children:
+                    if key.startswith('color_map'):
+                        choropleth._children[key].color_scale = [
+                            '#f7fcf5',  # Verde muito claro
+                            '#edf8e9',
+                            '#e5f5e0',
+                            '#c7e9c0',
+                            '#a1d99b',
+                            '#74c476',
+                            '#41ab5d',
+                            '#238b45',
+                            '#006d2c',
+                            '#00441b'   # Verde muito escuro
+                        ]
+                
+            except Exception as e:
+                print(f"Erro no Choropleth: {e}")
+            
+            # Adicionar tooltips com informações de votos
             geojson_data = load_geojson()
             for feature in geojson_data['features']:
                 bairro_nome = feature['properties']['NOME']
                 votos = votos_dict.get(bairro_nome, 0)
-                feature['properties']['tooltip_content'] = f"Bairro: {bairro_nome}<br>Votos: {votos:,}"
+                votos_formatado = f"{votos:,}".replace(",", ".")
+                
+                # Calcular porcentagem em relação ao total
+                porcentagem = (votos / total_votos * 100) if total_votos > 0 else 0
+                
+                feature['properties']['tooltip_content'] = f"""
+                    <div style='font-family: Arial; font-size: 12px; color: #333;'>
+                        <b>Bairro:</b> {bairro_nome}<br>
+                        <b>Total de votos:</b> {votos_formatado}<br>
+                        <b>Porcentagem:</b> {porcentagem:.1f}%
+                    </div>
+                """
             
-            # Adicionar GeoJson com tooltip
+            # Adicionar GeoJson com tooltip detalhado
             fl.GeoJson(
                 geojson_data,
+                name='Detalhes',
                 style_function=lambda feature: {
-                    'fillColor': 'yellow',
+                    'fillColor': 'transparent',
                     'color': 'black',
-                    'weight': 0.5,
-                    'fillOpacity': 0.1,
+                    'weight': 1,
+                    'fillOpacity': 0,
                 },
                 tooltip=fl.GeoJsonTooltip(
                     fields=['tooltip_content'],
                     aliases=[''],
                     localize=True,
-                    sticky=False,
+                    sticky=True,
                     labels=False,
-                    style="background-color: white; color: #333333; font-family: Arial; font-size: 12px; padding: 10px;"
+                    style="""
+                        background-color: white;
+                        color: #333333;
+                        font-family: Arial;
+                        font-size: 12px;
+                        padding: 10px;
+                        border: 1px solid #cccccc;
+                        border-radius: 3px;
+                        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+                    """
                 )
             ).add_to(mapa)
             
