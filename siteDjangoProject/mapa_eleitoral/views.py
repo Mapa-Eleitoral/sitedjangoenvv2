@@ -9,7 +9,7 @@ import folium as fl
 from django.utils.safestring import mark_safe
 from django.core.cache import cache
 from decimal import Decimal
-from .models import DadoEleitoral  # ou DadoEleitoralRaw
+from .models import DadoEleitoral, Eleicao  # ou DadoEleitoralRaw
 import branca.colormap as cm
 
 def load_geojson():
@@ -28,22 +28,38 @@ def load_geojson():
 def home_view(request):
     """View principal do mapa eleitoral usando MySQL"""
     
-    # Obter lista de partidos únicos do banco
+    # Obter lista de anos únicos do banco (assumindo que existe um campo de ano)
+    anos = list(
+        DadoEleitoral.objects
+        .values_list('ano_eleicao', flat=True)  # Ajuste o nome do campo conforme seu modelo
+        .distinct()
+        .order_by('-ano_eleicao')  # Ordem decrescente (mais recente primeiro)
+    )
+    
+    # Ano selecionado
+    selected_ano = request.GET.get('ano', str(anos[0]) if anos else '2020')
+    selected_ano = int(selected_ano) if selected_ano.isdigit() else (anos[0] if anos else 2020)
+    
+    # Obter lista de partidos únicos do banco para o ano selecionado
     partidos = list(
         DadoEleitoral.objects
+        .filter(ano_eleicao=selected_ano)
         .values_list('sg_partido', flat=True)
         .distinct()
         .order_by('sg_partido')
     )
     
     # Partido e candidato selecionados
-    selected_partido = request.GET.get('partido', 'PRB')
+    selected_partido = request.GET.get('partido', 'PRB' if 'PRB' in partidos else (partidos[0] if partidos else ''))
     selected_candidato = request.GET.get('candidato', '')
     
-    # Obter candidatos do partido selecionado
+    # Obter candidatos do partido selecionado para o ano selecionado
     candidatos = list(
         DadoEleitoral.objects
-        .filter(sg_partido=selected_partido)
+        .filter(
+            ano_eleicao=selected_ano,
+            sg_partido=selected_partido
+        )
         .values_list('nm_urna_candidato', flat=True)
         .distinct()
         .order_by('nm_urna_candidato')
@@ -58,10 +74,11 @@ def home_view(request):
     candidato_info = {}
     
     if selected_candidato:
-        # Buscar e somar votos por bairro para o candidato selecionado
+        # Buscar e somar votos por bairro para o candidato selecionado no ano selecionado
         votos_por_bairro = (
             DadoEleitoral.objects
             .filter(
+                ano_eleicao=selected_ano,
                 sg_partido=selected_partido,
                 nm_urna_candidato=selected_candidato
             )
@@ -73,7 +90,7 @@ def home_view(request):
         )
         
         # Debug para verificar os dados
-        print("Dados por bairro:")
+        print(f"Dados por bairro para {selected_candidato} em {selected_ano}:")
         for vpb in votos_por_bairro:
             print(f"Bairro: {vpb['nm_bairro']}, Votos: {vpb['total_votos']}")
         
@@ -90,6 +107,7 @@ def home_view(request):
         primeiro_registro = (
             DadoEleitoral.objects
             .filter(
+                ano_eleicao=selected_ano,
                 sg_partido=selected_partido,
                 nm_urna_candidato=selected_candidato
             )
@@ -100,7 +118,8 @@ def home_view(request):
             candidato_info = {
                 'nome': primeiro_registro.nm_urna_candidato,
                 'cargo': primeiro_registro.ds_cargo,
-                'votos_total': total_votos
+                'votos_total': total_votos,
+                'ano': selected_ano
             }
             
             # Criar mapa
@@ -173,7 +192,8 @@ def home_view(request):
                     <div style='font-family: Arial; font-size: 12px; color: #333;'>
                         <b>Bairro:</b> {bairro_nome}<br>
                         <b>Total de votos:</b> {votos_formatado}<br>
-                        <b>Porcentagem:</b> {porcentagem:.1f}%
+                        <b>Porcentagem:</b> {porcentagem:.1f}%<br>
+                        <b>Ano:</b> {selected_ano}
                     </div>
                 """
             
@@ -210,8 +230,10 @@ def home_view(request):
             map_html = mark_safe(mapa._repr_html_())
     
     context = {
+        'anos': anos,
         'partidos': partidos,
         'candidatos': candidatos,
+        'selected_ano': selected_ano,
         'selected_partido': selected_partido,
         'selected_candidato': selected_candidato,
         'candidato_info': candidato_info,
@@ -221,17 +243,78 @@ def home_view(request):
     return render(request, 'home.html', context)
 
 def get_candidatos_ajax(request):
-    """View AJAX para obter candidatos baseado no partido selecionado"""
+    """View AJAX para obter candidatos baseado no partido e ano selecionados"""
     partido = request.GET.get('partido')
-    if not partido:
+    ano = request.GET.get('ano')
+    
+    if not partido or not ano:
+        return JsonResponse({'candidatos': []})
+    
+    try:
+        ano = int(ano)
+    except (ValueError, TypeError):
         return JsonResponse({'candidatos': []})
     
     candidatos = list(
         DadoEleitoral.objects
-        .filter(sg_partido=partido)
+        .filter(
+            sg_partido=partido,
+            ano_eleicao=ano
+        )
         .values_list('nm_urna_candidato', flat=True)
         .distinct()
         .order_by('nm_urna_candidato')
     )
     
     return JsonResponse({'candidatos': candidatos})
+
+def get_partidos_ajax(request):
+    """View AJAX para obter partidos baseado no ano selecionado"""
+    ano = request.GET.get('ano')
+    
+    if not ano:
+        return JsonResponse({'partidos': []})
+    
+    try:
+        ano = int(ano)
+    except (ValueError, TypeError):
+        return JsonResponse({'partidos': []})
+    
+    partidos = list(
+        DadoEleitoral.objects
+        .filter(ano_eleicao=ano)
+        .values_list('sg_partido', flat=True)
+        .distinct()
+        .order_by('sg_partido')
+    )
+    
+    return JsonResponse({'partidos': partidos})
+
+def home(request):
+    # ...existing code...
+    anos = Eleicao.objects.values_list('ano', flat=True).distinct().order_by('ano')
+    context = {
+        'partidos': partidos,
+        'candidatos': candidatos,
+        'anos': anos,
+        # ...existing code...
+    }
+    return render(request, 'home.html', context)
+
+def update_map(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        partidos = data.get('partidos', [])
+        candidatos = data.get('candidatos', [])
+        anos = data.get('anos', [])
+
+        queryset = Eleicao.objects.all()
+        
+        if partidos:
+            queryset = queryset.filter(partido__in=partidos)
+        if candidatos:
+            queryset = queryset.filter(candidato__in=candidatos)
+        if anos:
+            queryset = queryset.filter(ano__in=anos)
+
+        # ...rest of your existing update_map logic...

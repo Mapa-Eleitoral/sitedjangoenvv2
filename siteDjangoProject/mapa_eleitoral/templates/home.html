@@ -615,6 +615,23 @@
             }
         }
         
+        function updateMap() {
+            var selectedPartidos = getSelectedValues('partido');
+            var selectedCandidatos = getSelectedValues('candidato');
+
+            fetch('/update_map/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({
+                    partidos: selectedPartidos,
+                    candidatos: selectedCandidatos
+                })
+            })
+        }
+        
         document.getElementById('filterForm').addEventListener('submit', function() {
             document.getElementById('loadingIndicator').style.display = 'flex';
         });
