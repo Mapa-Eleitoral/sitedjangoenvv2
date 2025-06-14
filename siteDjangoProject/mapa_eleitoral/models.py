@@ -3,7 +3,7 @@ from django.db import models
 
 class DadoEleitoral(models.Model):
     """
-    Model que mapeia para a tabela eleicao_16_rio existente no MySQL
+    Model que mapeia para a tabela eleicoes_rio existente no MySQL
     """
     # Campo ID adicionado (corresponde à coluna id criada no MySQL)
     id = models.AutoField(primary_key=True)
