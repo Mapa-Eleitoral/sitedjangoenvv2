@@ -26,8 +26,8 @@ class DadoEleitoral(models.Model):
     nr_longitude = models.CharField(max_length=100, db_column='NR_LONGITUDE', verbose_name="Longitude")
     
     class Meta:
-        db_table = 'eleicoes_rio'  # Nome da sua tabela MySQL existente
-        managed = False  # Django não vai tentar criar/alterar esta tabela
+        db_table = 'eleicoes_rio'  
+        managed = False  
         verbose_name = "Dado Eleitoral"
         verbose_name_plural = "Dados Eleitorais"
     

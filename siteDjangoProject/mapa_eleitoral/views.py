@@ -163,6 +163,7 @@ def home_view(request):
                 ).add_to(mapa)
                 
                 # Personalizar a legenda com 10 tons de verde
+                # Definindo a escala de cores manualmente
                 for key in choropleth._children:
                     if key.startswith('color_map'):
                         choropleth._children[key].color_scale = [
