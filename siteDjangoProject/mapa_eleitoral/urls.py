@@ -1,11 +1,12 @@
-# mapa_eleitoral/urls.py (URLs do app)
+# urls.py - Adicione estas rotas ao seu arquivo urls.py
+
 from django.urls import path
 from . import views
 
-app_name = 'mapa_eleitoral'
-
 urlpatterns = [
     path('', views.home_view, name='home'),
-    path('get-candidatos/', views.get_candidatos_ajax, name='get_candidatos'),
+    path('get_candidatos_ajax/', views.get_candidatos_ajax, name='get_candidatos_ajax'),
+    path('get_partidos_ajax/', views.get_partidos_ajax, name='get_partidos_ajax'),  # Nova rota
+    path('get_anos_ajax/', views.get_anos_ajax, name='get_anos_ajax'),  # Nova rota
 ]
 

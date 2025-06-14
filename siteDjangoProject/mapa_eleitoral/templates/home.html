@@ -188,7 +188,7 @@
 
         .controls-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr auto;
+            grid-template-columns: 1fr 1fr 1fr auto;
             gap: 1rem;
             align-items: end;
         }
@@ -260,7 +260,7 @@
             color: white;
             padding: 1.5rem;
             display: grid;
-            grid-template-columns: 1fr auto;
+            grid-template-columns: 1fr auto auto;
             gap: 1rem;
             align-items: center;
         }
@@ -291,6 +291,15 @@
             opacity: 0.8;
             text-transform: uppercase;
             letter-spacing: 0.05em;
+        }
+
+        .year-badge {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 0.5rem 1rem;
+            border-radius: calc(var(--radius) - 0.25rem);
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-align: center;
         }
 
         /* Map container */
@@ -420,9 +429,14 @@
             .candidate-info {
                 grid-template-columns: 1fr;
                 text-align: center;
+                gap: 1rem;
             }
 
             .vote-stats {
+                text-align: center;
+            }
+
+            .year-badge {
                 text-align: center;
             }
 
@@ -482,6 +496,16 @@
             <form method="GET" id="filterForm">
                 <div class="controls-grid">
                     <div class="form-group">
+                        <label for="ano" class="form-label">Ano da Eleição</label>
+                        <select class="form-select" id="ano" name="ano" onchange="updatePartidos()">
+                            {% for ano in anos %}
+                                <option value="{{ ano }}" {% if ano|stringformat:"s" == selected_ano %}selected{% endif %}>
+                                    {{ ano }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
                         <label for="partido" class="form-label">Partido</label>
                         <select class="form-select" id="partido" name="partido" onchange="updateCandidatos()">
                             {% for partido in partidos %}
@@ -526,6 +550,11 @@
                 <div class="vote-count">{{ candidato_info.votos_total|floatformat:0 }}</div>
                 <div class="vote-label">Votos</div>
             </div>
+            {% if candidato_info.ano %}
+            <div class="year-badge">
+                {{ candidato_info.ano }}
+            </div>
+            {% endif %}
         </div>
         {% endif %}
 
@@ -539,7 +568,7 @@
                 <div class="map-placeholder">
                     <i class="fas fa-map"></i>
                     <h3>Selecione um candidato</h3>
-                    <p>Escolha um partido e candidato para visualizar os dados no mapa</p>
+                    <p>Escolha um ano, partido e candidato para visualizar os dados no mapa</p>
                 </div>
             {% endif %}
         </div>
@@ -582,15 +611,60 @@
             outputElements.forEach(el => el.remove());
         }
         
+        // Função para atualizar partidos baseado no ano
+        async function updatePartidos() {
+            const ano = document.getElementById('ano').value;
+            const partidoSelect = document.getElementById('partido');
+            const candidatoSelect = document.getElementById('candidato');
+            
+            partidoSelect.disabled = true;
+            candidatoSelect.disabled = true;
+            partidoSelect.innerHTML = '<option>Carregando...</option>';
+            candidatoSelect.innerHTML = '<option>Carregando...</option>';
+            
+            try {
+                const response = await fetch(`/get_partidos_ajax/?ano=${encodeURIComponent(ano)}`);
+                const data = await response.json();
+                
+                partidoSelect.innerHTML = '';
+                data.partidos.forEach(partido => {
+                    const option = document.createElement('option');
+                    option.value = partido;
+                    option.textContent = partido;
+                    partidoSelect.appendChild(option);
+                });
+                
+                // Selecionar primeiro partido ou PRB se disponível
+                if (data.partidos.includes('PRB')) {
+                    partidoSelect.value = 'PRB';
+                } else if (data.partidos.length > 0) {
+                    partidoSelect.value = data.partidos[0];
+                }
+                
+                // Atualizar candidatos após selecionar partido
+                await updateCandidatos();
+                
+            } catch (error) {
+                console.error('Erro ao carregar partidos:', error);
+                partidoSelect.innerHTML = '<option>Erro ao carregar</option>';
+                candidatoSelect.innerHTML = '<option>Erro ao carregar</option>';
+            } finally {
+                partidoSelect.disabled = false;
+                candidatoSelect.disabled = false;
+            }
+        }
+        
+        // Função para atualizar candidatos baseado no partido e ano
         async function updateCandidatos() {
             const partido = document.getElementById('partido').value;
+            const ano = document.getElementById('ano').value;
             const candidatoSelect = document.getElementById('candidato');
             
             candidatoSelect.disabled = true;
             candidatoSelect.innerHTML = '<option>Carregando...</option>';
             
             try {
-                const response = await fetch(`/get-candidatos/?partido=${encodeURIComponent(partido)}`);
+                const response = await fetch(`/get_candidatos_ajax/?partido=${encodeURIComponent(partido)}&ano=${encodeURIComponent(ano)}`);
                 const data = await response.json();
                 
                 candidatoSelect.innerHTML = '';
@@ -601,6 +675,7 @@
                     candidatoSelect.appendChild(option);
                 });
                 
+                // Selecionar CRIVELLA se disponível, senão o primeiro
                 if (data.candidatos.includes('CRIVELLA')) {
                     candidatoSelect.value = 'CRIVELLA';
                 } else if (data.candidatos.length > 0) {
@@ -643,3 +718,4 @@
     </script>
 </body>
 </html>
+
